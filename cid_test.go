@@ -4,13 +4,73 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/multiformats/go-base32"
 	"math/rand"
 	"strings"
 	"testing"
+	"time"
 
 	mbase "github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
 )
+
+func TestCidToKey(t *testing.T) {
+	decode, err := Decode("QmaoijWRDi2tcqVLnksTE5R7WqfggNsHLZHYk1bzSybexe")
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	rawKey := decode.Bytes()
+	buf := make([]byte, 1+base32.RawStdEncoding.EncodedLen(len(rawKey)))
+	buf[0] = '/'
+	base32.RawStdEncoding.Encode(buf[1:], rawKey)
+	s := string(buf)
+	fmt.Println(s)
+}
+func TestQuick(t *testing.T) {
+	fmt.Println((0xBFFFF - 0x80000 + 1) / 1024)
+}
+
+func TestCidVersionCast(t *testing.T) {
+	cidStr := "QmaoijWRDi2tcqVLnksTE5R7WqfggNsHLZHYk1bzSybexe"
+	cidv0, err := Decode(cidStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := cidv0.str
+	fmt.Println(s)
+	bytes := cidv0.Bytes()
+	prefix := cidv0.Prefix()
+	fmt.Println(bytes)
+	fmt.Printf("%#v", prefix)
+
+	cidv1 := NewCidV1(DagProtobuf, cidv0.Hash())
+	cidv2 := NewCidV2(0, DagProtobuf, cidv0.Hash())
+	cidv21 := NewCidV2(8, DagProtobuf, cidv0.Hash())
+	cidv22 := NewCidV2(98, DagProtobuf, cidv0.Hash())
+	prefix1 := cidv1.Prefix()
+	prefix2 := cidv2.Prefix2()
+	s1 := cidv1.String()
+	s2 := cidv2.String()
+	s21 := cidv21.String()
+	s22 := cidv22.String()
+	fmt.Println(s1, s2, s21, s22)
+	fmt.Printf("%#v,%#v", prefix1, prefix2)
+	hash1 := cidv1.Hash()
+	hash2 := cidv2.Hash2()
+	fmt.Println(hash1, hash2)
+}
+
+func TestNewCidV2(t *testing.T) {
+	cidStr := "QmaoijWRDi2tcqVLnksTE5R7WqfggNsHLZHYk1bzSybexe"
+	cidv0, err := Decode(cidStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 1000; i++ {
+		fmt.Println(i)
+		fmt.Println(NewCidV2(uint64(i), DagProtobuf, cidv0.Hash()).String())
+	}
+}
 
 // Copying the "silly test" idea from
 // https://github.com/multiformats/go-multihash/blob/7aa9f26a231c6f34f4e9fad52bf580fd36627285/multihash_test.go#L13
@@ -448,7 +508,7 @@ func TestParse(t *testing.T) {
 			return err
 		}
 		if cid.Version() != 0 {
-			return fmt.Errorf("expected version 0, got %s", string(cid.Version()))
+			return fmt.Errorf("expected version 0, got %s", fmt.Sprint(cid.Version()))
 		}
 		actual := cid.Hash().B58String()
 		if actual != expected {
@@ -597,4 +657,43 @@ func TestBadParse(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected to fail to parse an invalid CIDv1 CID")
 	}
+}
+
+type Counter struct {
+	count int
+}
+
+func (counter *Counter) String() string {
+	return fmt.Sprintf("{count: %d}", counter.count)
+}
+
+var mapChan = make(chan map[string]*Counter, 5)
+
+func TestGo(t *testing.T) {
+	syncChan := make(chan struct{}, 2)
+	go func() {
+		for {
+			if m, ok := <-mapChan; ok {
+				counter := m["count"]
+				counter.count++
+			} else {
+				break
+			}
+		}
+		fmt.Println("Stopped.[receiver]")
+		syncChan <- struct{}{}
+	}()
+
+	go func() {
+		countMap := map[string]*Counter{"count": &Counter{}}
+		for i := 0; i < 5; i++ {
+			mapChan <- countMap
+			time.Sleep(time.Millisecond)
+			fmt.Printf("%v.[sender]\n", countMap)
+		}
+		close(mapChan)
+		syncChan <- struct{}{}
+	}()
+	<-syncChan
+	<-syncChan
 }

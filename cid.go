@@ -181,6 +181,21 @@ func NewCidV1(codecType uint64, mhash mh.Multihash) Cid {
 	return Cid{string(buf[:n+hashlen])}
 }
 
+func NewCidV2(blockType uint64, codecType uint64, mhash mh.Multihash) Cid {
+	hashlen := len(mhash)
+	// two 8 bytes (max) numbers plus hash
+	buf := make([]byte, 2+varint.UvarintSize(codecType)+hashlen)
+	n := varint.PutUvarint(buf, blockType)
+	n += varint.PutUvarint(buf[n:], 2)
+	n += varint.PutUvarint(buf[n:], codecType)
+
+	cn := copy(buf[n:], mhash)
+	if cn != hashlen {
+		panic("copy hash length is inconsistent")
+	}
+	return Cid{string(buf[:n+hashlen])}
+}
+
 var _ encoding.BinaryMarshaler = Cid{}
 var _ encoding.BinaryUnmarshaler = (*Cid)(nil)
 var _ encoding.TextMarshaler = Cid{}
@@ -407,6 +422,24 @@ func (c Cid) Hash() mh.Multihash {
 	return mh.Multihash(bytes[n1+n2:])
 }
 
+// Hash returns the multihash contained by a Cid.
+func (c Cid) Hash2() mh.Multihash {
+	bytes := c.Bytes()
+
+	if c.Version() == 0 {
+		return mh.Multihash(bytes)
+	}
+
+	// skip version length
+	_, n1, _ := varint.FromUvarint(bytes)
+	// skip codec length
+	_, n2, _ := varint.FromUvarint(bytes[n1:])
+	// skip block tyoe
+	_, n3, _ := varint.FromUvarint(bytes[n2:])
+
+	return mh.Multihash(bytes[n1+n2+n3:])
+}
+
 // Bytes returns the byte representation of a Cid.
 // The output of bytes can be parsed back into a Cid
 // with Cast().
@@ -543,6 +576,37 @@ func (c Cid) Prefix() Prefix {
 	}
 }
 
+func (c Cid) Prefix2() Prefix2 {
+	if c.Version() == 0 {
+		return Prefix2{
+			BlockType: 0,
+			MhType:    mh.SHA2_256,
+			MhLength:  32,
+			Version:   0,
+			Codec:     DagProtobuf,
+		}
+	}
+
+	offset := 0
+	auth, n, _ := uvarint(c.str[offset:])
+	offset += n
+	version, n, _ := uvarint(c.str[offset:])
+	offset += n
+	codec, n, _ := uvarint(c.str[offset:])
+	offset += n
+	mhtype, n, _ := uvarint(c.str[offset:])
+	offset += n
+	mhlen, _, _ := uvarint(c.str[offset:])
+
+	return Prefix2{
+		BlockType: auth,
+		MhType:    mhtype,
+		MhLength:  int(mhlen),
+		Version:   version,
+		Codec:     codec,
+	}
+}
+
 // Prefix represents all the metadata of a Cid,
 // that is, the Version, the Codec, the Multihash type
 // and the Multihash length. It does not contains
@@ -554,6 +618,14 @@ type Prefix struct {
 	Codec    uint64
 	MhType   uint64
 	MhLength int
+}
+
+type Prefix2 struct {
+	BlockType uint64
+	Version   uint64
+	Codec     uint64
+	MhType    uint64
+	MhLength  int
 }
 
 // Sum uses the information in a prefix to perform a multihash.Sum()
