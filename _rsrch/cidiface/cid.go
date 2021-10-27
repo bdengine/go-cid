@@ -17,7 +17,8 @@ import (
 type Cid interface {
 	// n.b. 'yields' means "without copy", 'produces' means a malloc.
 
-	Version() uint64         // Yields the version prefix as a uint.
+	Version() uint64 // Yields the version prefix as a uint.
+	BlockInfo() uint64
 	Multicodec() uint64      // Yields the multicodec as a uint.
 	Multihash() mh.Multihash // Yields the multihash segment.
 

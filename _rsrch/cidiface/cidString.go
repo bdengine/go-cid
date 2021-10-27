@@ -35,16 +35,34 @@ func (c CidStr) Version() uint64 {
 	return v
 }
 
+func (c CidStr) BlockInfo() uint64 {
+	bytes := []byte(c)
+	v, n := binary.Uvarint(bytes) // skip version length
+	if v == 2 {
+		blockInfo, _ := binary.Uvarint(bytes[n:]) // skip blockInfo length
+		return blockInfo
+	}
+	return 0
+}
+
 func (c CidStr) Multicodec() uint64 {
 	bytes := []byte(c)
-	_, n := binary.Uvarint(bytes) // skip version length
+	v, n := binary.Uvarint(bytes) // skip version length
+	if v == 2 {
+		_, l := binary.Uvarint(bytes[n:]) // skip blockInfo length
+		n += l
+	}
 	codec, _ := binary.Uvarint(bytes[n:])
 	return codec
 }
 
 func (c CidStr) Multihash() mh.Multihash {
 	bytes := []byte(c)
-	_, n1 := binary.Uvarint(bytes)      // skip version length
+	v, n1 := binary.Uvarint(bytes) // skip version length
+	if v == 2 {
+		_, l := binary.Uvarint(bytes[n1:]) // skip blockInfo length
+		n1 += l
+	}
 	_, n2 := binary.Uvarint(bytes[n1:]) // skip codec length
 	return mh.Multihash(bytes[n1+n2:])  // return slice of remainder
 }
@@ -55,7 +73,7 @@ func (c CidStr) String() string {
 	switch c.Version() {
 	case 0:
 		return c.Multihash().B58String()
-	case 1:
+	case 1, 2:
 		mbstr, err := mbase.Encode(mbase.Base58BTC, []byte(c))
 		if err != nil {
 			panic("should not error with hardcoded mbase: " + err.Error())

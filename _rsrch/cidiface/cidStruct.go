@@ -30,9 +30,10 @@ var _ Cid = CidStruct{}
 // Beware of zero-valued CidStruct: it is difficult to distinguish an
 // incorrectly-initialized "invalid" CidStruct from one representing a v0 cid.
 type CidStruct struct {
-	version uint64
-	codec   uint64
-	hash    mh.Multihash
+	version   uint64
+	blockInfo uint64
+	codec     uint64
+	hash      mh.Multihash
 }
 
 // EmptyCidStruct is a constant for a zero/uninitialized/sentinelvalue cid;
@@ -43,6 +44,10 @@ var EmptyCidStruct = CidStruct{}
 
 func (c CidStruct) Version() uint64 {
 	return c.version
+}
+
+func (c CidStruct) BlockInfo() uint64 {
+	return c.blockInfo
 }
 
 func (c CidStruct) Multicodec() uint64 {
@@ -59,7 +64,7 @@ func (c CidStruct) String() string {
 	switch c.Version() {
 	case 0:
 		return c.Multihash().B58String()
-	case 1:
+	case 1, 2:
 		mbstr, err := mbase.Encode(mbase.Base58BTC, c.Bytes())
 		if err != nil {
 			panic("should not error with hardcoded mbase: " + err.Error())
@@ -79,6 +84,17 @@ func (c CidStruct) Bytes() []byte {
 		// two 8 bytes (max) numbers plus hash
 		buf := make([]byte, 2*binary.MaxVarintLen64+len(c.hash))
 		n := binary.PutUvarint(buf, c.version)
+		n += binary.PutUvarint(buf[n:], c.codec)
+		cn := copy(buf[n:], c.hash)
+		if cn != len(c.hash) {
+			panic("copy hash length is inconsistent")
+		}
+		return buf[:n+len(c.hash)]
+	case 2:
+		// two 8 bytes (max) numbers plus hash
+		buf := make([]byte, 2*binary.MaxVarintLen64+len(c.hash))
+		n := binary.PutUvarint(buf, c.version)
+		n += binary.PutUvarint(buf[n:], c.blockInfo)
 		n += binary.PutUvarint(buf[n:], c.codec)
 		cn := copy(buf[n:], c.hash)
 		if cn != len(c.hash) {

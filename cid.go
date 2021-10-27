@@ -79,6 +79,23 @@ const (
 	FilCommitmentSealed   = 0xf102
 )
 
+func GetBlockInfo(blockType uint8, crypt uint8, auth uint8) uint64 {
+	return uint64(blockType<<2 + crypt<<1 + auth)
+}
+
+func ParseBlocInfo(blockInfo uint64) (blockType uint8, crypt uint8, auth uint8, err error) {
+	if blockInfo > blockInfoMaxValue {
+		err = errUnknownInfo
+		return
+	}
+	auth = uint8(blockInfo) & 1
+	blockInfo >>= 1
+	crypt = uint8(blockInfo) & 1
+	blockInfo >>= 1
+	blockType = uint8(blockInfo) & 3
+	return
+}
+
 // Codecs maps the name of a codec to its type
 var Codecs = map[string]uint64{
 	"v0":                      DagProtobuf,
@@ -181,12 +198,19 @@ func NewCidV1(codecType uint64, mhash mh.Multihash) Cid {
 	return Cid{string(buf[:n+hashlen])}
 }
 
-func NewCidV2(blockType uint64, codecType uint64, mhash mh.Multihash) Cid {
+func NewCidV2(blockInfo uint64, codecType uint64, mhash mh.Multihash) Cid {
+	if blockInfo > blockInfoMaxValue {
+		panic("未知的块信息")
+	}
+
 	hashlen := len(mhash)
 	// two 8 bytes (max) numbers plus hash
-	buf := make([]byte, 2+varint.UvarintSize(codecType)+hashlen)
-	n := varint.PutUvarint(buf, blockType)
-	n += varint.PutUvarint(buf[n:], 2)
+	buf := make([]byte, 1+varint.UvarintSize(blockInfo)+varint.UvarintSize(codecType)+hashlen)
+	// 版本号
+	n := varint.PutUvarint(buf, 2)
+	// 权限信息
+	n += varint.PutUvarint(buf[n:], blockInfo)
+	// codecType
 	n += varint.PutUvarint(buf[n:], codecType)
 
 	cn := copy(buf[n:], mhash)
@@ -344,7 +368,8 @@ func (c Cid) Version() uint64 {
 	if len(c.str) == 34 && c.str[0] == 18 && c.str[1] == 32 {
 		return 0
 	}
-	return 1
+	version, _, _ := uvarint(c.str)
+	return version
 }
 
 // Type returns the multicodec-packed content type of a Cid.
@@ -353,7 +378,11 @@ func (c Cid) Type() uint64 {
 		return DagProtobuf
 	}
 	_, n, _ := uvarint(c.str)
-	codec, _, _ := uvarint(c.str[n:])
+	n1 := 0
+	if c.Version() == 2 {
+		_, n1, _ = uvarint(c.str[n:])
+	}
+	codec, _, _ := uvarint(c.str[n+n1:])
 	return codec
 }
 
@@ -364,7 +393,7 @@ func (c Cid) String() string {
 	switch c.Version() {
 	case 0:
 		return c.Hash().B58String()
-	case 1:
+	case 1, 2:
 		mbstr, err := mbase.Encode(mbase.Base32, c.Bytes())
 		if err != nil {
 			panic("should not error with hardcoded mbase: " + err.Error())
@@ -385,7 +414,7 @@ func (c Cid) StringOfBase(base mbase.Encoding) (string, error) {
 			return "", ErrInvalidEncoding
 		}
 		return c.Hash().B58String(), nil
-	case 1:
+	case 1, 2:
 		return mbase.Encode(base, c.Bytes())
 	default:
 		panic("not possible to reach this point")
@@ -399,7 +428,7 @@ func (c Cid) Encode(base mbase.Encoder) string {
 	switch c.Version() {
 	case 0:
 		return c.Hash().B58String()
-	case 1:
+	case 1, 2:
 		return base.Encode(c.Bytes())
 	default:
 		panic("not possible to reach this point")
@@ -414,20 +443,13 @@ func (c Cid) Hash() mh.Multihash {
 		return mh.Multihash(bytes)
 	}
 
-	// skip version length
-	_, n1, _ := varint.FromUvarint(bytes)
-	// skip codec length
-	_, n2, _ := varint.FromUvarint(bytes[n1:])
+	if c.Version() == 1 {
+		// skip version length
+		_, n1, _ := varint.FromUvarint(bytes)
+		// skip codec length
+		_, n2, _ := varint.FromUvarint(bytes[n1:])
 
-	return mh.Multihash(bytes[n1+n2:])
-}
-
-// Hash returns the multihash contained by a Cid.
-func (c Cid) Hash2() mh.Multihash {
-	bytes := c.Bytes()
-
-	if c.Version() == 0 {
-		return mh.Multihash(bytes)
+		return mh.Multihash(bytes[n1+n2:])
 	}
 
 	// skip version length
@@ -438,6 +460,7 @@ func (c Cid) Hash2() mh.Multihash {
 	_, n3, _ := varint.FromUvarint(bytes[n2:])
 
 	return mh.Multihash(bytes[n1+n2+n3:])
+
 }
 
 // Bytes returns the byte representation of a Cid.
@@ -559,8 +582,28 @@ func (c Cid) Prefix() Prefix {
 		}
 	}
 
+	if c.Version() == 1 {
+		offset := 0
+		version, n, _ := uvarint(c.str[offset:])
+		offset += n
+		codec, n, _ := uvarint(c.str[offset:])
+		offset += n
+		mhtype, n, _ := uvarint(c.str[offset:])
+		offset += n
+		mhlen, _, _ := uvarint(c.str[offset:])
+
+		return Prefix{
+			MhType:   mhtype,
+			MhLength: int(mhlen),
+			Version:  version,
+			Codec:    codec,
+		}
+	}
+
 	offset := 0
 	version, n, _ := uvarint(c.str[offset:])
+	offset += n
+	blockinfo, n, _ := uvarint(c.str[offset:])
 	offset += n
 	codec, n, _ := uvarint(c.str[offset:])
 	offset += n
@@ -569,41 +612,11 @@ func (c Cid) Prefix() Prefix {
 	mhlen, _, _ := uvarint(c.str[offset:])
 
 	return Prefix{
-		MhType:   mhtype,
-		MhLength: int(mhlen),
-		Version:  version,
-		Codec:    codec,
-	}
-}
-
-func (c Cid) Prefix2() Prefix2 {
-	if c.Version() == 0 {
-		return Prefix2{
-			BlockType: 0,
-			MhType:    mh.SHA2_256,
-			MhLength:  32,
-			Version:   0,
-			Codec:     DagProtobuf,
-		}
-	}
-
-	offset := 0
-	auth, n, _ := uvarint(c.str[offset:])
-	offset += n
-	version, n, _ := uvarint(c.str[offset:])
-	offset += n
-	codec, n, _ := uvarint(c.str[offset:])
-	offset += n
-	mhtype, n, _ := uvarint(c.str[offset:])
-	offset += n
-	mhlen, _, _ := uvarint(c.str[offset:])
-
-	return Prefix2{
-		BlockType: auth,
 		MhType:    mhtype,
 		MhLength:  int(mhlen),
 		Version:   version,
 		Codec:     codec,
+		BlockInfo: blockinfo,
 	}
 }
 
@@ -613,15 +626,9 @@ func (c Cid) Prefix2() Prefix2 {
 // any actual content information.
 // NOTE: The use -1 in MhLength to mean default length is deprecated,
 //   use the V0Builder or V1Builder structures instead
+// BlockInfo 0000000:  000 retain   0 0     00
 type Prefix struct {
-	Version  uint64
-	Codec    uint64
-	MhType   uint64
-	MhLength int
-}
-
-type Prefix2 struct {
-	BlockType uint64
+	BlockInfo uint64
 	Version   uint64
 	Codec     uint64
 	MhType    uint64
@@ -651,6 +658,8 @@ func (p Prefix) Sum(data []byte) (Cid, error) {
 		return NewCidV0(hash), nil
 	case 1:
 		return NewCidV1(p.Codec, hash), nil
+	case 2:
+		return NewCidV2(p.BlockInfo, p.Codec, hash), nil
 	default:
 		return Undef, fmt.Errorf("invalid cid version")
 	}
@@ -727,21 +736,27 @@ func CidFromBytes(data []byte) (int, Cid, error) {
 		return 0, Undef, err
 	}
 
-	if vers != 1 {
-		return 0, Undef, fmt.Errorf("expected 1 as the cid version number, got: %d", vers)
+	if vers != 1 && vers != 2 {
+		return 0, Undef, fmt.Errorf("expected 1 or 2 as the cid version number, got: %d", vers)
 	}
-
-	_, cn, err := varint.FromUvarint(data[n:])
+	bn := 0
+	if vers == 2 {
+		_, bn, err = varint.FromUvarint(data[n:])
+		if err != nil {
+			return 0, Undef, err
+		}
+	}
+	_, cn, err := varint.FromUvarint(data[n+bn:])
 	if err != nil {
 		return 0, Undef, err
 	}
 
-	mhnr, _, err := mh.MHFromBytes(data[n+cn:])
+	mhnr, _, err := mh.MHFromBytes(data[n+bn+cn:])
 	if err != nil {
 		return 0, Undef, err
 	}
 
-	l := n + cn + mhnr
+	l := n + bn + cn + mhnr
 
 	return l, Cid{string(data[0:l])}, nil
 }

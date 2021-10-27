@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/multiformats/go-base32"
+	"io/ioutil"
 	"math/rand"
 	"strings"
 	"testing"
@@ -14,50 +15,106 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
+// 测试cid转为文件路径
 func TestCidToKey(t *testing.T) {
-	decode, err := Decode("QmaoijWRDi2tcqVLnksTE5R7WqfggNsHLZHYk1bzSybexe")
+	cid, err := Decode("baiaxaerafpspoa56eysdka3ntkbfu5l26h7tnskrbal77zh6ddtyinyzdqca")
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	rawKey := decode.Bytes()
+	rawKey := cid.Bytes()
 	buf := make([]byte, 1+base32.RawStdEncoding.EncodedLen(len(rawKey)))
 	buf[0] = '/'
 	base32.RawStdEncoding.Encode(buf[1:], rawKey)
 	s := string(buf)
-	fmt.Println(s)
-}
-func TestQuick(t *testing.T) {
-	fmt.Println((0xBFFFF - 0x80000 + 1) / 1024)
+	length := len(s)
+	fmt.Println(s[length-3:length-1] + s)
 }
 
-func TestCidVersionCast(t *testing.T) {
-	cidStr := "QmaoijWRDi2tcqVLnksTE5R7WqfggNsHLZHYk1bzSybexe"
+func TestBlockInfo(t *testing.T) {
+	for i := 0; i <= blockInfoMaxValue; i++ {
+		blockType, crypt, auth, err := ParseBlocInfo(uint64(i))
+		if err != nil {
+			continue
+		}
+		info := GetBlockInfo(blockType, crypt, auth)
+		if info != uint64(i) {
+			t.Fatal("blockInfo 解析错误")
+		}
+	}
+}
+
+// 测试cid版本
+func TestCidVersion(t *testing.T) {
+	cidStr := "bafkreidkbwbwpdvkzjolhddraey47zx5dydi3qetcmadem7wczg3q6zpha"
 	cidv0, err := Decode(cidStr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := cidv0.str
-	fmt.Println(s)
-	bytes := cidv0.Bytes()
-	prefix := cidv0.Prefix()
-	fmt.Println(bytes)
-	fmt.Printf("%#v", prefix)
-
+	fmt.Println(cidv0.Version())
 	cidv1 := NewCidV1(DagProtobuf, cidv0.Hash())
-	cidv2 := NewCidV2(0, DagProtobuf, cidv0.Hash())
-	cidv21 := NewCidV2(8, DagProtobuf, cidv0.Hash())
-	cidv22 := NewCidV2(98, DagProtobuf, cidv0.Hash())
-	prefix1 := cidv1.Prefix()
-	prefix2 := cidv2.Prefix2()
-	s1 := cidv1.String()
-	s2 := cidv2.String()
-	s21 := cidv21.String()
-	s22 := cidv22.String()
-	fmt.Println(s1, s2, s21, s22)
-	fmt.Printf("%#v,%#v", prefix1, prefix2)
-	hash1 := cidv1.Hash()
-	hash2 := cidv2.Hash2()
-	fmt.Println(hash1, hash2)
+	blockInfo := GetBlockInfo(BlockType_root, Crypt_N, Auth_Y)
+	cidV2 := NewCidV2(blockInfo, DagProtobuf, cidv0.Hash())
+	if cidv0.Version() != 2 || cidv1.Version() != 1 || cidV2.Version() != 2 {
+		t.Fatal("version2 version is wrong")
+	}
+
+	prefix := cidV2.Prefix()
+	p0 := cidv0.Prefix()
+	fmt.Println(p0)
+	if prefix.BlockInfo != blockInfo || prefix.Version != 2 || prefix.Codec != DagProtobuf {
+		t.Fatal("version2 prefix is wrong")
+	}
+	fmt.Println(cidV2.String())
+
+}
+
+func TestCidV2Sum(t *testing.T) {
+	b, err := ioutil.ReadFile("D:/IPFSSTORAGE/blocks/ZZ/CIQA6NGR6UWAWAA5KDXAPATKDBLCNFBN6PQBRWBE4NZKMLFNRDIZZZQ.data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v0Builder := V0Builder{}
+	v1Builder := V1Builder{
+		Codec:    DagProtobuf,
+		MhType:   mh.SHA2_256,
+		MhLength: 0,
+	}
+	v2Builder := V2Builder{
+		BlockInfo: 0,
+		Codec:     DagProtobuf,
+		MhType:    mh.SHA2_256,
+		MhLength:  0,
+	}
+	v2Builder2 := V2Builder{
+		BlockInfo: 1,
+		Codec:     DagProtobuf,
+		MhType:    mh.SHA2_256,
+		MhLength:  0,
+	}
+	cidv0, err := v0Builder.Sum(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cidv1, err := v1Builder.Sum(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cidv2, err := v2Builder.Sum(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cidv22, err := v2Builder2.Sum(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(cidv0)
+	fmt.Println(cidv1)
+	fmt.Println(cidv2)
+	fmt.Println(cidv22)
+	if cidv0.Hash().B58String() != cidv1.Hash().B58String() || cidv1.Hash().B58String() != cidv2.Hash().B58String() ||
+		cidv2.Hash().B58String() != cidv22.Hash().B58String() {
+		t.Fatal("hash 不相等")
+	}
 }
 
 func TestNewCidV2(t *testing.T) {
@@ -66,9 +123,10 @@ func TestNewCidV2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 1000; i++ {
-		fmt.Println(i)
-		fmt.Println(NewCidV2(uint64(i), DagProtobuf, cidv0.Hash()).String())
+	fmt.Println(NewCidV1(DagProtobuf, cidv0.Hash()))
+	for i := 0; i < 13; i++ {
+		cidV2 := NewCidV2(uint64(i), DagProtobuf, cidv0.Hash()).String()
+		fmt.Println(cidV2)
 	}
 }
 
