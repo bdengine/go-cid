@@ -79,21 +79,42 @@ const (
 	FilCommitmentSealed   = 0xf102
 )
 
-func GetBlockInfo(blockType uint8, crypt uint8, auth uint8) uint64 {
-	return uint64(blockType<<2 + crypt<<1 + auth)
+func GetBlockInfo(tar uint8, blockType uint8, crypt uint8, auth uint8) uint64 {
+	return uint64(tar<<m[Tar] + blockType<<m[BlockType] + crypt<<m[Crypt] + auth<<m[Auth])
 }
 
-func ParseBlocInfo(blockInfo uint64) (blockType uint8, crypt uint8, auth uint8, err error) {
+func ParseBlocInfo(blockInfo uint64) (tar uint8, blockType uint8, crypt uint8, auth uint8, err error) {
 	if blockInfo > blockInfoMaxValue {
 		err = errUnknownInfo
 		return
 	}
-	auth = uint8(blockInfo) & 1
-	blockInfo >>= 1
-	crypt = uint8(blockInfo) & 1
-	blockInfo >>= 1
-	blockType = uint8(blockInfo) & 3
+	auth = uint8(blockInfo) & uint8(Auth) >> m[Auth]
+	crypt = uint8(blockInfo) & uint8(Crypt) >> m[Crypt]
+	blockType = uint8(blockInfo) & uint8(BlockType) >> m[BlockType]
+	tar = uint8(blockInfo) & uint8(Tar) >> m[Tar]
 	return
+}
+
+func ParseBlocInfoMask(blockInfo uint64, infoMask InfoMask) (info uint8, err error) {
+	if blockInfo > blockInfoMaxValue {
+		err = errUnknownInfo
+		return
+	}
+	info = uint8(blockInfo) & uint8(infoMask) >> m[infoMask]
+	return
+}
+
+func TurnInfoMask(blockInfo uint64, infoMask InfoMask, val uint8) (uint64, error) {
+	if blockInfo > blockInfoMaxValue {
+		return 0, errUnknownInfo
+	}
+	if int(val) > vMap[infoMask]+1 {
+		return 0, fmt.Errorf("val 过大")
+	}
+
+	blockInfo = blockInfo&(uint64(maxValue)^uint64(infoMask)) | uint64(val<<m[infoMask])
+
+	return blockInfo, nil
 }
 
 // Codecs maps the name of a codec to its type
