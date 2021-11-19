@@ -95,13 +95,11 @@ func ParseBlocInfo(blockInfo uint64) (tar uint8, blockType uint8, crypt uint8, a
 	return
 }
 
-func ParseBlocInfoMask(blockInfo uint64, infoMask InfoMask) (info uint8, err error) {
+func ParseBlocInfoMask(blockInfo uint64, infoMask InfoMask) (uint8, error) {
 	if blockInfo > blockInfoMaxValue {
-		err = errUnknownInfo
-		return
+		return 0, errUnknownInfo
 	}
-	info = uint8(blockInfo) & uint8(infoMask) >> m[infoMask]
-	return
+	return uint8(blockInfo) & uint8(infoMask) >> m[infoMask], nil
 }
 
 func TurnInfoMask(blockInfo uint64, infoMask InfoMask, val uint8) (uint64, error) {
@@ -112,9 +110,7 @@ func TurnInfoMask(blockInfo uint64, infoMask InfoMask, val uint8) (uint64, error
 		return 0, fmt.Errorf("val 过大")
 	}
 
-	blockInfo = blockInfo&(uint64(maxValue)^uint64(infoMask)) | uint64(val<<m[infoMask])
-
-	return blockInfo, nil
+	return blockInfo&(uint64(maxValue)^uint64(infoMask)) | uint64(val<<m[infoMask]), nil
 }
 
 // Codecs maps the name of a codec to its type
