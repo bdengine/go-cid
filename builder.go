@@ -9,6 +9,7 @@ type Builder interface {
 	GetCodec() uint64
 	WithCodec(uint64) Builder
 	SetBlockInfo(blockInfo uint64) Builder
+	GetBlockInfo() uint64
 }
 
 type V0Builder struct{}
@@ -46,6 +47,10 @@ func (p Prefix) SetBlockInfo(c uint64) Builder {
 	return p
 }
 
+func (p Prefix) GetBlockInfo() uint64 {
+	return p.BlockInfo
+}
+
 func (p V0Builder) Sum(data []byte) (Cid, error) {
 	hash, err := mh.Sum(data, mh.SHA2_256, -1)
 	if err != nil {
@@ -67,6 +72,10 @@ func (p V0Builder) WithCodec(c uint64) Builder {
 
 func (p V0Builder) SetBlockInfo(c uint64) Builder {
 	return p
+}
+
+func (p V0Builder) GetBlockInfo() uint64 {
+	return 0
 }
 
 func (p V1Builder) Sum(data []byte) (Cid, error) {
@@ -93,6 +102,10 @@ func (p V1Builder) SetBlockInfo(c uint64) Builder {
 	return p
 }
 
+func (p V1Builder) GetBlockInfo() uint64 {
+	return 0
+}
+
 func (p V2Builder) Sum(data []byte) (Cid, error) {
 	mhLen := p.MhLength
 	if mhLen <= 0 {
@@ -117,4 +130,8 @@ func (p V2Builder) WithCodec(c uint64) Builder {
 func (p V2Builder) SetBlockInfo(c uint64) Builder {
 	p.BlockInfo = c
 	return p
+}
+
+func (p V2Builder) GetBlockInfo() uint64 {
+	return p.BlockInfo
 }

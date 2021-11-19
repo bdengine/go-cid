@@ -9,6 +9,7 @@ const (
 	Tar_N            = 0
 	BlockType_root   = 1
 	BlockType_leaf   = 0
+	BlockType_crypt  = 3
 	BlockType_middle = 2
 	Crypt_Y          = 1
 	Crypt_N          = 0
