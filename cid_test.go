@@ -15,9 +15,34 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
+type Solution struct {
+	nums, origin []int
+}
+
+func Constructor(nums []int) Solution {
+	return Solution{
+		nums:   nums,
+		origin: append([]int{}, nums...),
+	}
+}
+
+func (this *Solution) Reset() []int {
+	copy(this.nums, this.origin)
+	return this.nums
+}
+
+func (this *Solution) Shuffle() []int {
+	l := len(this.origin)
+	for i := 0; i < l; i++ {
+		j := rand.Intn(l-i) + i
+		this.nums[i], this.nums[j] = this.nums[j], this.nums[i]
+	}
+	return this.nums
+}
+
 // 测试cid转为文件路径
 func TestCidToKey(t *testing.T) {
-	cid, err := Decode("baiaxaerafpspoa56eysdka3ntkbfu5l26h7tnskrbal77zh6ddtyinyzdqca")
+	cid, err := Decode("QmNcJh4CktxMhJE7VcQ1VvCTbKHRA9rw5uoGcBWRZ2zQKC")
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -83,6 +108,7 @@ func TestCidVersion(t *testing.T) {
 	//cidv1 := NewCidV1(DagProtobuf, cidv0.Hash())
 	blockInfo := GetBlockInfo(Tar_N, BlockType_root, Crypt_N, Auth_Y)
 	cidV2 := NewCidV2(blockInfo, DagProtobuf, cidv0.Hash())
+	cidv0.Hash()
 	/*if cidv0.Version() != 2 || cidv1.Version() != 1 || cidV2.Version() != 2 {
 		t.Fatal("version2 version is wrong")
 	}*/
@@ -161,6 +187,18 @@ func TestNewCidV2(t *testing.T) {
 		cidV2 := NewCidV2(uint64(i), DagProtobuf, cidv0.Hash()).String()
 		fmt.Println(cidV2)
 	}
+}
+
+func TestNewCidInfo(t *testing.T) {
+	cidStr := "baikxaerarjn624dgwyc7f3yd4bmwmuuubrbklyxxah6gpuzqhh2e67aqimmq"
+	cid, err := Decode(cidStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tar, bType, crypt, auth, err := ParseBlocInfo(cid.Prefix().BlockInfo)
+
+	fmt.Println(tar, bType, crypt, auth)
+
 }
 
 // Copying the "silly test" idea from

@@ -102,6 +102,7 @@ func ParseBlocInfoMask(blockInfo uint64, infoMask InfoMask) (uint8, error) {
 	return uint8(blockInfo) & uint8(infoMask) >> m[infoMask], nil
 }
 
+// TurnInfoMask 利用掩码将改变对应的值为val
 func TurnInfoMask(blockInfo uint64, infoMask InfoMask, val uint8) (uint64, error) {
 	if blockInfo > blockInfoMaxValue {
 		return 0, errUnknownInfo
@@ -109,7 +110,6 @@ func TurnInfoMask(blockInfo uint64, infoMask InfoMask, val uint8) (uint64, error
 	if int(val) > vMap[infoMask]+1 {
 		return 0, fmt.Errorf("val 过大")
 	}
-
 	return blockInfo&(uint64(maxValue)^uint64(infoMask)) | uint64(val<<m[infoMask]), nil
 }
 
