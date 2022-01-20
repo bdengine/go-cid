@@ -1,4 +1,4 @@
-module github.com/ipfs/go-cid
+module github.com/bdengine/go-cid
 
 require (
 	github.com/multiformats/go-base32 v0.0.3
