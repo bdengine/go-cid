@@ -25,10 +25,11 @@ const (
 type InfoMask uint64
 
 const (
-	Tar       InfoMask = 1 << 4
-	BlockType InfoMask = 3 << 2
-	Crypt     InfoMask = 1 << 1
-	Auth      InfoMask = 1 << 0
+	Auth InfoMask = 1 << iota
+	Crypt
+	BlockType InfoMask = 3 << iota
+	_
+	Tar InfoMask = 1 << iota
 )
 
 var m map[InfoMask]int = map[InfoMask]int{Tar: 4, BlockType: 2, Crypt: 1, Auth: 0}

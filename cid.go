@@ -110,7 +110,7 @@ func TurnInfoMask(blockInfo uint64, infoMask InfoMask, val uint8) (uint64, error
 	if int(val) > vMap[infoMask]+1 {
 		return 0, fmt.Errorf("val 过大")
 	}
-	return blockInfo&(uint64(maxValue)^uint64(infoMask)) | uint64(val<<m[infoMask]), nil
+	return blockInfo&^uint64(infoMask) | uint64(val<<m[infoMask]), nil
 }
 
 // Codecs maps the name of a codec to its type
